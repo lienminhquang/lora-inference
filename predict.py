@@ -67,6 +67,10 @@ class Predictor(BasePredictor):
         print("Loading pipeline...")
         if self.current_model_id == model_id:
             return
+        self.current_model_id = None
+        self.pipe = None
+        self.adapters = None
+        self.img2img_pipe = None
 
         st = time.time()
         
