@@ -22,16 +22,15 @@ from lora_diffusion import LoRAManager, monkeypatch_remove_lora
 from t2i_adapters import Adapter
 from t2i_adapters import patch_pipe as patch_pipe_t2i_adapter
 from PIL import Image
+from diffusers.pipelines.stable_diffusion.safety_checker import (
+    StableDiffusionSafetyChecker,
+)
+from transformers import CLIPFeatureExtractor
+import shutil
 
 import dotenv
-import os
 
 dotenv.load_dotenv()
-
-MODEL_ID = os.environ.get("MODEL_ID", None)
-MODEL_CACHE = "diffusers-cache"
-SAFETY_MODEL_ID = os.environ.get("SAFETY_MODEL_ID", None)
-IS_FP16 = os.environ.get("IS_FP16", "0") == "1"
 
 
 def url_local_fn(url):
@@ -59,14 +58,26 @@ def download_lora(url):
 
 
 class Predictor(BasePredictor):
-    def setup(self):
+    def __init__(self) -> None:
+        self.current_model_id = None
+        super().__init__()
+
+    def setup_model_at_runntime(self, model_id: str, safe_model_id: str, is_fp16: bool):
         """Load the model into memory to make running multiple predictions efficient"""
         print("Loading pipeline...")
+        if self.current_model_id == model_id:
+            return
 
-        self.pipe = StableDiffusionPipeline.from_pretrained(
-            MODEL_CACHE,
-            torch_dtype=torch.float16 if IS_FP16 else torch.float32,
-        ).to("cuda")
+        st = time.time()
+        
+        model_cache = "diffusers-cache/" + model_id 
+        if not os.path.exists(model_cache):
+          self.pipe = download_weights(model_cache, model_id, safe_model_id, is_fp16)
+        else:
+          self.pipe = StableDiffusionPipeline.from_pretrained(
+              model_cache,
+              torch_dtype=torch.float16 if is_fp16 else torch.float32,
+          ).to("cuda")
 
         patch_pipe_t2i_adapter(self.pipe)
 
@@ -94,6 +105,8 @@ class Predictor(BasePredictor):
         self.ranklist: list = []
         self.loaded = None
         self.lora_manager = None
+        self.current_model_id = model_id
+        print(f"Load model time: {time.time() - st}")
 
     def set_lora(self, urllists: List[str], scales: List[float]):
         assert len(urllists) == len(scales), "Number of LoRAs and scales must match."
@@ -187,8 +200,23 @@ class Predictor(BasePredictor):
             choices=["sketch", "seg", "keypose", "depth"],
             default="sketch",
         ),
+        model_id: str = Input(
+            description="Model ID",
+            default="",
+        ),
+        safe_model_id: str = Input(
+            description="Safe Model ID",
+            default="",
+        ),
+        is_fp16: bool = Input(
+            description="Whether to use fp16",
+            default=False,
+        ),
     ) -> List[Path]:
         """Run a single prediction on the model"""
+
+        self.setup_model_at_runntime(model_id=model_id, safe_model_id=safe_model_id, is_fp16=is_fp16)
+
         if seed is None:
             seed = int.from_bytes(os.urandom(2), "big")
         print(f"Using seed: {seed}")
@@ -318,3 +346,49 @@ def make_scheduler(name, config):
         "K_EULER_ANCESTRAL": EulerAncestralDiscreteScheduler.from_config(config),
         "DPMSolverMultistep": DPMSolverMultistepScheduler.from_config(config),
     }[name]
+
+def download_weights(model_cache, model_id, safety_model_id, is_fp16):
+  try:
+
+    if os.path.exists(model_cache):
+        shutil.rmtree(model_cache)
+    os.makedirs(model_cache, exist_ok=True)
+
+    torch_dtype = torch.float16 if is_fp16 == 1 else torch.float32
+
+    safety_checker = StableDiffusionSafetyChecker.from_pretrained(
+        safety_model_id, torch_dtype=torch_dtype
+    )
+
+    feature_extractor = CLIPFeatureExtractor.from_dict(
+        {
+            "crop_size": {"height": 224, "width": 224},
+            "do_center_crop": True,
+            "do_convert_rgb": True,
+            "do_normalize": True,
+            "do_rescale": True,
+            "do_resize": True,
+            "feature_extractor_type": "CLIPFeatureExtractor",
+            "image_mean": [0.48145466, 0.4578275, 0.40821073],
+            "image_processor_type": "CLIPFeatureExtractor",
+            "image_std": [0.26862954, 0.26130258, 0.27577711],
+            "resample": 3,
+            "rescale_factor": 0.00392156862745098,
+            "size": {"shortest_edge": 224},
+        }
+    )
+
+    pipe = StableDiffusionPipeline.from_pretrained(
+        model_id,
+        safety_checker=safety_checker,
+        feature_extractor=feature_extractor,
+        torch_dtype=torch_dtype,
+    )
+
+    pipe.save_pretrained(model_cache)
+    pipe.to("cuda")
+    return pipe
+  except Exception as e:
+    print(e)
+    shutil.rmtree(model_cache)
+    raise e
