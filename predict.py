@@ -216,6 +216,10 @@ class Predictor(BasePredictor):
             description="Whether to use fp16",
             default=False,
         ),
+        disable_safety_check: bool = Input(
+            description="Whether to disable safety check",
+            default=False,
+        ),
     ) -> List[Path]:
         """Run a single prediction on the model"""
 
@@ -326,14 +330,14 @@ class Predictor(BasePredictor):
 
         output_paths = []
         for i, sample in enumerate(output.images):
-            if output.nsfw_content_detected and output.nsfw_content_detected[i]:
+            if not disable_safety_check and output.nsfw_content_detected and output.nsfw_content_detected[i]:
                 continue
 
             output_path = f"/tmp/out-{i}.png"
             sample.save(output_path)
             output_paths.append(Path(output_path))
 
-        if len(output_paths) == 0:
+        if len(output_paths) and not disable_safety_check == 0:
             raise Exception(
                 "NSFW content detected. Try running it again, or try a different prompt."
             )
