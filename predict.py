@@ -1,3 +1,9 @@
+from basicsr.archs.rrdbnet_arch import RRDBNet
+import os, cv2
+import subprocess
+
+subprocess.call(['python', '/src/setup_upscale.py', 'develop'])
+
 from hashlib import sha512
 import os
 from typing import List
@@ -30,11 +36,6 @@ import shutil
 
 import dotenv
 
-from basicsr.archs.rrdbnet_arch import RRDBNet
-import os, cv2
-import subprocess
-
-subprocess.call(['python', '/src/setup_upscale.py', 'develop'])
 
 from realesrgan import RealESRGANer
 from realesrgan.archs.srvgg_arch import SRVGGNetCompact
@@ -42,7 +43,7 @@ from gfpgan import GFPGANer
 import tempfile
 
 upscale_model_name = 'RealESRGAN_x4plus'
-upscale_model_path = os.path.join('/root/.cache/realesrgan', model_name + ".pth")
+upscale_model_path = os.path.join('/root/.cache/realesrgan', upscale_model_name + ".pth")
 
 dotenv.load_dotenv()
 
@@ -74,6 +75,7 @@ def download_lora(url):
 class Predictor(BasePredictor):
     def __init__(self) -> None:
         self.current_model_id = None
+        self.upsampler = None
         super().__init__()
 
 
@@ -247,6 +249,14 @@ class Predictor(BasePredictor):
             description="Whether to disable safety check",
             default=False,
         ),
+        upscale: bool = Input(
+            description="Whether to upscale the output",
+            default=False,
+        ),
+        scale: float = Input(
+            description="Factor to scale image by", ge=0, le=10, default=4
+        ),
+        face_enhance: bool = Input(description="Face enhance", default=True)
     ) -> List[Path]:
         """Run a single prediction on the model"""
 
@@ -362,7 +372,7 @@ class Predictor(BasePredictor):
 
             output_path = f"/tmp/out-{i}.png"
             sample.save(output_path)
-            output_path = self.upscale(Path(output_path), 4, True)
+            output_path = self.upscale(Path(output_path), scale=scale, face_enhance=face_enhance) if upscale else output_path
             output_paths.append(Path(output_path))
 
 
