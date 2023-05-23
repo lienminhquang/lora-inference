@@ -9,6 +9,8 @@ build:
     - "ffmpeg"
     - "libsm6"
     - "libxext6"
+    - "libgl1-mesa-glx"
+    - "libglib2.0-0"
   python_packages:
     - "diffusers==0.11.1"
     - "torch==1.13.0"
@@ -21,5 +23,13 @@ build:
     - "opencv-python==4.7.0.68"
     - "torchvision==0.14.0"
     - "python-dotenv"
+    - "numpy==1.20"
+    - "facexlib==0.2.3"
+    - "Pillow==9.1.1"
+    - "tqdm==4.64.0"
+  run:
+    - "pip install basicsr"
+    - "pip install gfpgan"
+    - "mkdir -p /root/.cache/realesrgan; wget --quiet --output-document=/root/.cache/realesrgan/RealESRGAN_x4plus.pth https://models.nmb.ai/RealESRGAN_x4plus.pth; wget --quiet --output-document=/root/.cache/realesrgan/GFPGANv1.3.pth https://models.nmb.ai/majesty/GFPGANv1.3.pth"
 
 predict: "predict.py:Predictor"

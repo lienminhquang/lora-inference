@@ -30,6 +30,20 @@ import shutil
 
 import dotenv
 
+from basicsr.archs.rrdbnet_arch import RRDBNet
+import os, cv2
+import subprocess
+
+subprocess.call(['python', '/src/setup_upscale.py', 'develop'])
+
+from realesrgan import RealESRGANer
+from realesrgan.archs.srvgg_arch import SRVGGNetCompact
+from gfpgan import GFPGANer
+import tempfile
+
+upscale_model_name = 'RealESRGAN_x4plus'
+upscale_model_path = os.path.join('/root/.cache/realesrgan', model_name + ".pth")
+
 dotenv.load_dotenv()
 
 
@@ -61,6 +75,19 @@ class Predictor(BasePredictor):
     def __init__(self) -> None:
         self.current_model_id = None
         super().__init__()
+
+
+    def setup_upscale(self):
+        model = RRDBNet(num_in_ch=3, num_out_ch=3, num_feat=64, num_block=23, num_grow_ch=32, scale=4)
+        netscale = 4
+        self.upsampler = RealESRGANer(
+            scale=netscale,
+            model_path=upscale_model_path,
+            model=model,
+            tile=0,
+            tile_pad=10,
+            pre_pad=0,
+            half=True)
 
     def setup_model_at_runntime(self, model_id: str, safe_model_id: str, is_fp16: bool):
         """Load the model into memory to make running multiple predictions efficient"""
@@ -335,14 +362,47 @@ class Predictor(BasePredictor):
 
             output_path = f"/tmp/out-{i}.png"
             sample.save(output_path)
+            output_path = self.upscale(Path(output_path), 4, True)
             output_paths.append(Path(output_path))
+
 
         if len(output_paths) and not disable_safety_check == 0:
             raise Exception(
                 "NSFW content detected. Try running it again, or try a different prompt."
             )
+        
 
         return output_paths
+
+    def upscale(
+        self,
+        image: Path = Input(description="Input image"),
+        scale: float = Input(
+            description="Factor to scale image by", ge=0, le=10, default=4
+        ),
+        face_enhance: bool = Input(description="Face enhance", default=True)
+    ) -> Path:
+
+        img = cv2.imread(str(image), cv2.IMREAD_UNCHANGED)
+        if len(img.shape) == 3 and img.shape[2] == 4:
+            img_mode = 'RGBA'
+        else:
+            img_mode = None
+
+        if face_enhance:
+            face_enhancer = GFPGANer(
+                model_path='/root/.cache/realesrgan/GFPGANv1.3.pth',
+                upscale=scale,
+                arch='clean',
+                channel_multiplier=2,
+                bg_upsampler=self.upsampler
+            )
+            _, _, output = face_enhancer.enhance(img, has_aligned=False, only_center_face=False, paste_back=True)
+        else:
+            output, _ = self.upsampler.enhance(img, outscale=scale)
+        save_path=os.path.join(tempfile.mkdtemp(), "output.png")
+        cv2.imwrite(save_path, output)
+        return Path(save_path)
 
 
 def make_scheduler(name, config):

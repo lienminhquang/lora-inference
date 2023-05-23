@@ -4,3 +4,4 @@ __pycache__
 *.safetensors
 .env
 out*.png
+realesrgan/weights/*
