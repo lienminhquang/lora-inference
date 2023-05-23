@@ -76,6 +76,7 @@ class Predictor(BasePredictor):
     def __init__(self) -> None:
         self.current_model_id = None
         self.upsampler = None
+        self.safety_checker = None
         super().__init__()
 
 
@@ -100,6 +101,7 @@ class Predictor(BasePredictor):
         self.pipe = None
         self.adapters = None
         self.img2img_pipe = None
+        self.safety_checker = None
 
         st = time.time()
         
@@ -111,6 +113,7 @@ class Predictor(BasePredictor):
               model_cache,
               torch_dtype=torch.float16 if is_fp16 else torch.float32,
           ).to("cuda")
+        self.safety_checker = self.pipe.safety_checker
 
         patch_pipe_t2i_adapter(self.pipe)
 
@@ -261,6 +264,14 @@ class Predictor(BasePredictor):
         """Run a single prediction on the model"""
 
         self.setup_model_at_runntime(model_id=model_id, safe_model_id=safe_model_id, is_fp16=is_fp16)
+
+        if(disable_safety_check):
+            print("Warning: Safety check is disabled. This is not recommended.")
+            self.pipe.safety_checker = None
+            self.pipe.requires_safety_checker = False
+        else:
+            self.pipe.safety_checker = self.safety_checker
+            self.pipe.requires_safety_checker = True
 
         if seed is None:
             seed = int.from_bytes(os.urandom(2), "big")
