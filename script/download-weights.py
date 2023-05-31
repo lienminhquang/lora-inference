@@ -9,13 +9,10 @@ from diffusers.pipelines.stable_diffusion.safety_checker import (
 from transformers import CLIPFeatureExtractor
 
 
-import dotenv
 
-dotenv.load_dotenv()
-
-MODEL_ID = os.environ.get("MODEL_ID", None)
+MODEL_ID = "SG161222/Realistic_Vision_V2.0"
 MODEL_CACHE = "diffusers-cache"
-SAFETY_MODEL_ID = os.environ.get("SAFETY_MODEL_ID", None)
+SAFETY_MODEL_ID = "CompVis/stable-diffusion-safety-checker"
 IS_FP16 = 1
 
 assert MODEL_ID is not None, "MODEL_ID must be set"
