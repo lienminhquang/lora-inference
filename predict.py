@@ -47,6 +47,11 @@ upscale_model_path = os.path.join('/root/.cache/realesrgan', upscale_model_name 
 
 dotenv.load_dotenv()
 
+MODEL_ID = os.environ.get("MODEL_ID", None)
+MODEL_CACHE = "diffusers-cache"
+SAFETY_MODEL_ID = os.environ.get("SAFETY_MODEL_ID", None)
+IS_FP16 = os.environ.get("IS_FP16", "0") == "1"
+
 
 def url_local_fn(url):
     return sha512(url.encode()).hexdigest() + ".safetensors"
@@ -92,30 +97,16 @@ class Predictor(BasePredictor):
             pre_pad=0,
             half=True)
 
-    def setup_model_at_runntime(self, model_id: str, safe_model_id: str, is_fp16: bool):
+    def setup(self):
         """Load the model into memory to make running multiple predictions efficient"""
         print("Loading pipeline...")
-        model_name = model_id + "_" + safe_model_id + ("_fp16" if is_fp16 else "")
-        print("Model name:", model_name)
-        if self.current_model_id == model_name:
-            print("The requested model is loaded from cache.")
-            return
-        self.current_model_id = None
-        self.pipe = None
-        self.adapters = None
-        self.img2img_pipe = None
-        self.safety_checker = None
-
         st = time.time()
         
-        model_cache = "diffusers-cache/" + model_name
-        if not os.path.exists(model_cache):
-          self.pipe = download_weights(model_cache, model_id, safe_model_id, is_fp16)
-        else:
-          self.pipe = StableDiffusionPipeline.from_pretrained(
-              model_cache,
-              torch_dtype=torch.float16 if is_fp16 else torch.float32,
-          ).to("cuda")
+       
+        self.pipe = StableDiffusionPipeline.from_pretrained(
+            MODEL_CACHE,
+            torch_dtype=torch.float16 if IS_FP16 else torch.float32,
+        ).to("cuda")
         self.safety_checker = self.pipe.safety_checker
 
         patch_pipe_t2i_adapter(self.pipe)
@@ -144,7 +135,6 @@ class Predictor(BasePredictor):
         self.ranklist: list = []
         self.loaded = None
         self.lora_manager = None
-        self.current_model_id = model_name
         print(f"Load model time: {time.time() - st}")
 
     def set_lora(self, urllists: List[str], scales: List[float]):
@@ -239,18 +229,6 @@ class Predictor(BasePredictor):
             choices=["sketch", "seg", "keypose", "depth"],
             default="sketch",
         ),
-        model_id: str = Input(
-            description="Model ID",
-            default="",
-        ),
-        safe_model_id: str = Input(
-            description="Safe Model ID",
-            default="",
-        ),
-        is_fp16: bool = Input(
-            description="Whether to use fp16",
-            default=False,
-        ),
         disable_safety_check: bool = Input(
             description="Whether to disable safety check",
             default=False,
@@ -265,8 +243,6 @@ class Predictor(BasePredictor):
         face_enhance: bool = Input(description="Face enhance", default=True)
     ) -> List[Path]:
         """Run a single prediction on the model"""
-
-        self.setup_model_at_runntime(model_id=model_id, safe_model_id=safe_model_id, is_fp16=is_fp16)
 
         if(disable_safety_check):
             print("Warning: Safety check is disabled. This is not recommended.")
