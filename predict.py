@@ -366,7 +366,7 @@ class Predictor(BasePredictor):
             output_paths.append(Path(output_path))
 
 
-        if len(output_paths) and not disable_safety_check:
+        if len(output_paths) == 0:
             raise Exception(
                 "NSFW content detected. Try running it again, or try a different prompt."
             )
