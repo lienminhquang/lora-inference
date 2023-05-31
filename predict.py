@@ -96,7 +96,9 @@ class Predictor(BasePredictor):
         """Load the model into memory to make running multiple predictions efficient"""
         print("Loading pipeline...")
         model_name = model_id + "_" + safe_model_id + ("_fp16" if is_fp16 else "")
+        print("Model name:", model_name)
         if self.current_model_id == model_name:
+            print("The requested model is loaded from cache.")
             return
         self.current_model_id = None
         self.pipe = None
