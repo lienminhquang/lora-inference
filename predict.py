@@ -95,7 +95,8 @@ class Predictor(BasePredictor):
     def setup_model_at_runntime(self, model_id: str, safe_model_id: str, is_fp16: bool):
         """Load the model into memory to make running multiple predictions efficient"""
         print("Loading pipeline...")
-        if self.current_model_id == model_id:
+        model_name = model_id + "_" + safe_model_id + ("_fp16" if is_fp16 else "")
+        if self.current_model_id == model_name:
             return
         self.current_model_id = None
         self.pipe = None
@@ -105,7 +106,7 @@ class Predictor(BasePredictor):
 
         st = time.time()
         
-        model_cache = "diffusers-cache/" + model_id 
+        model_cache = "diffusers-cache/" + model_name
         if not os.path.exists(model_cache):
           self.pipe = download_weights(model_cache, model_id, safe_model_id, is_fp16)
         else:
@@ -141,7 +142,7 @@ class Predictor(BasePredictor):
         self.ranklist: list = []
         self.loaded = None
         self.lora_manager = None
-        self.current_model_id = model_id
+        self.current_model_id = model_name
         print(f"Load model time: {time.time() - st}")
 
     def set_lora(self, urllists: List[str], scales: List[float]):
